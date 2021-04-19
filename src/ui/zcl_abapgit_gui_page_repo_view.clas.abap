@@ -133,8 +133,6 @@ CLASS zcl_abapgit_gui_page_repo_view DEFINITION
       CHANGING
         !ct_repo_items TYPE zif_abapgit_definitions=>ty_repo_item_tt .
     METHODS build_branch_dropdown
-      IMPORTING
-        !iv_wp_opt                LIKE zif_abapgit_html=>c_html_opt-crossout
       RETURNING
         VALUE(ro_branch_dropdown) TYPE REF TO zcl_abapgit_html_toolbar
       RAISING
@@ -236,12 +234,19 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
 
     CLEAR: ct_repo_items.
 
-    ls_sort-name       = mv_order_by.
     ls_sort-descending = mv_order_descending.
     ls_sort-astext     = abap_true.
+    ls_sort-name       = mv_order_by.
     INSERT ls_sort INTO TABLE lt_sort.
-    SORT lt_code_items BY (lt_sort).
-    SORT lt_diff_items BY (lt_sort).
+
+    " Combine state fields for order of 'Status' column
+    IF mv_order_by = 'LSTATE'.
+      ls_sort-name = 'RSTATE'.
+      INSERT ls_sort INTO TABLE lt_sort.
+    ENDIF.
+
+    SORT lt_code_items STABLE BY (lt_sort).
+    SORT lt_diff_items STABLE BY (lt_sort).
 
     INSERT LINES OF lt_non_code_and_metadata_items INTO TABLE ct_repo_items.
     INSERT LINES OF lt_diff_items INTO TABLE ct_repo_items.
@@ -267,8 +272,6 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
       ro_advanced_dropdown->add( iv_txt = 'Checkout commit'
                                  iv_act = |{ zif_abapgit_definitions=>c_action-git_checkout_commit }?key={ mv_key }|
                                  iv_opt = iv_wp_opt ).
-      ro_advanced_dropdown->add( iv_txt = 'Background Mode'
-                                 iv_act = |{ zif_abapgit_definitions=>c_action-go_background }?key={ mv_key }| ).
       ro_advanced_dropdown->add( iv_txt = 'Change Remote'
                                  iv_act = |{ zif_abapgit_definitions=>c_action-repo_remote_change }?key={ mv_key }| ).
       ro_advanced_dropdown->add( iv_txt = 'Make Off-line'
@@ -351,8 +354,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
     ro_branch_dropdown->add( iv_txt = 'Overview'
                              iv_act = |{ zif_abapgit_definitions=>c_action-go_branch_overview }?key={ mv_key }| ).
     ro_branch_dropdown->add( iv_txt = 'Switch'
-                             iv_act = |{ zif_abapgit_definitions=>c_action-git_branch_switch }?key={ mv_key }|
-                             iv_opt = iv_wp_opt ).
+                             iv_act = |{ zif_abapgit_definitions=>c_action-git_branch_switch }?key={ mv_key }| ).
     ro_branch_dropdown->add( iv_txt = 'Create'
                              iv_act = |{ zif_abapgit_definitions=>c_action-git_branch_create }?key={ mv_key }| ).
     ro_branch_dropdown->add( iv_txt = 'Delete'
@@ -406,7 +408,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
       lv_pull_opt = zif_abapgit_html=>c_html_opt-strong.
     ENDIF.
 
-    lo_tb_branch = build_branch_dropdown( lv_wp_opt ).
+    lo_tb_branch = build_branch_dropdown( ).
 
     lo_tb_tag = build_tag_dropdown( lv_wp_opt ).
 
@@ -480,7 +482,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
       ENDIF.
       IF iv_rstate IS NOT INITIAL OR iv_lstate IS NOT INITIAL. " Any changes
         ro_toolbar->add( iv_txt = 'Diff'
-                         iv_act = |{ zif_abapgit_definitions=>c_action-go_diff }?key={ mv_key }|
+                         iv_act = |{ zif_abapgit_definitions=>c_action-go_repo_diff }?key={ mv_key }|
                          iv_opt = zif_abapgit_html=>c_html_opt-strong ).
       ENDIF.
       li_log = mo_repo->get_log( ).
@@ -498,7 +500,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
                          iv_act = |{ zif_abapgit_definitions=>c_action-git_pull }?key={ mv_key }|
                          iv_opt = zif_abapgit_html=>c_html_opt-strong ).
         ro_toolbar->add( iv_txt = 'Diff'
-                         iv_act = |{ zif_abapgit_definitions=>c_action-go_diff }?key={ mv_key }|
+                         iv_act = |{ zif_abapgit_definitions=>c_action-go_repo_diff }?key={ mv_key }|
                          iv_opt = zif_abapgit_html=>c_html_opt-strong ).
       ENDIF.
       ro_toolbar->add( iv_txt = 'Import <sup>zip</sup>'
@@ -646,7 +648,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
       WHERE pgmna = sy-cprog
         AND cinfo = lc_report_tcode_hex.
 
-    IF lines( lt_tcodes ) = 1.
+    IF lines( lt_tcodes ) > 0.
       READ TABLE lt_tcodes INDEX 1 INTO rv_tcode.
     ENDIF.
   ENDMETHOD.
@@ -699,7 +701,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
 
 
   METHOD is_repo_lang_logon_lang.
-    rv_repo_lang_is_logon_lang = boolc( mo_repo->get_dot_abapgit( )->get_master_language( ) = sy-langu ).
+    rv_repo_lang_is_logon_lang = boolc( mo_repo->get_dot_abapgit( )->get_main_language( ) = sy-langu ).
   ENDMETHOD.
 
 
@@ -716,7 +718,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
 
     " https://blogs.sap.com/2017/01/13/logon-language-sy-langu-and-rfc/
 
-    lv_main_language = mo_repo->get_dot_abapgit( )->get_master_language( ).
+    lv_main_language = mo_repo->get_dot_abapgit( )->get_main_language( ).
     lv_tcode = get_abapgit_tcode( ).
     ASSERT lv_tcode IS NOT INITIAL.
 
@@ -801,6 +803,10 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
           iv_interactive_branch = abap_true ) ).
 
         ri_html->add( zcl_abapgit_gui_chunk_lib=>render_news( io_news = lo_news ) ).
+
+        zcl_abapgit_exit=>get_instance( )->wall_message_repo(
+          is_repo_meta = mo_repo->ms_data
+          ii_html      = ri_html ).
 
         CREATE OBJECT lo_browser
           EXPORTING
@@ -1012,7 +1018,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
 
         ri_html->add( '<div>' ).
         ri_html->add_a( iv_txt = |diff ({ is_item-changes })|
-                        iv_act = |{ zif_abapgit_definitions=>c_action-go_diff }?{ lv_difflink }| ).
+                        iv_act = |{ zif_abapgit_definitions=>c_action-go_file_diff }?{ lv_difflink }| ).
         ri_html->add( zcl_abapgit_gui_chunk_lib=>render_item_state( iv_lstate = is_item-lstate
                                                                     iv_rstate = is_item-rstate ) ).
         ri_html->add( '</div>' ).
@@ -1026,7 +1032,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
               iv_key  = mo_repo->get_key( )
               ig_file = ls_file ).
             ri_html->add_a( iv_txt = 'diff'
-                            iv_act = |{ zif_abapgit_definitions=>c_action-go_diff }?{ lv_difflink }| ).
+                            iv_act = |{ zif_abapgit_definitions=>c_action-go_file_diff }?{ lv_difflink }| ).
             ri_html->add( zcl_abapgit_gui_chunk_lib=>render_item_state( iv_lstate = ls_file-lstate
                                                                         iv_rstate = ls_file-rstate ) ).
           ELSE.
@@ -1117,7 +1123,11 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
     ls_col_spec-allow_order_by = abap_true.
     APPEND ls_col_spec TO lt_col_spec.
 
-    APPEND INITIAL LINE TO lt_col_spec.
+    ls_col_spec-tech_name = 'LSTATE'.
+    ls_col_spec-display_name = 'Status'.
+    ls_col_spec-allow_order_by = abap_true.
+    ls_col_spec-css_class = 'cmd'.
+    APPEND ls_col_spec TO lt_col_spec.
 
     ri_html->add( |<thead>| ).
     ri_html->add( |<tr>| ).
@@ -1312,7 +1322,7 @@ CLASS zcl_abapgit_gui_page_repo_view IMPLEMENTATION.
     INSERT ls_hotkey_action INTO TABLE rt_hotkey_actions.
 
     ls_hotkey_action-description   = |Diff|.
-    ls_hotkey_action-action = zif_abapgit_definitions=>c_action-go_diff.
+    ls_hotkey_action-action = zif_abapgit_definitions=>c_action-go_repo_diff.
     ls_hotkey_action-hotkey = |d|.
     INSERT ls_hotkey_action INTO TABLE rt_hotkey_actions.
 

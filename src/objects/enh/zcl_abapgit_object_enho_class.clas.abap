@@ -45,27 +45,43 @@ CLASS zcl_abapgit_object_enho_class IMPLEMENTATION.
           lv_editorder   TYPE n LENGTH 3,
           lv_methname    TYPE seocpdname,
           lt_abap        TYPE rswsourcet,
-          lx_enh         TYPE REF TO cx_enh_root.
+          lx_enh_root    TYPE REF TO cx_enh_root,
+          lv_new_em      TYPE abap_bool,
+          lt_files       TYPE zif_abapgit_definitions=>ty_files_tt.
 
-    FIELD-SYMBOLS: <ls_method> LIKE LINE OF lt_tab_methods.
+    FIELD-SYMBOLS: <ls_method> LIKE LINE OF lt_tab_methods,
+                   <ls_file>   TYPE zif_abapgit_definitions=>ty_file.
 
     ii_xml->read( EXPORTING iv_name = 'TAB_METHODS'
                   CHANGING cg_data = lt_tab_methods ).
 
+    lv_new_em = abap_false.
+    lt_files = mo_files->get_files( ).
+    LOOP AT lt_files ASSIGNING <ls_file>
+        WHERE filename CS 'enho.em_'.
+      lv_new_em = abap_true.
+      EXIT.
+    ENDLOOP.
+
+    SORT lt_tab_methods BY meth_header-editorder.
     LOOP AT lt_tab_methods ASSIGNING <ls_method>.
 
-      lv_editorder = <ls_method>-meth_header-editorder.
       lv_methname = <ls_method>-methkey-cmpname.
-      lt_abap = mo_files->read_abap( iv_extra = 'em' && lv_editorder ).
+      IF lv_new_em = abap_true.
+        lt_abap = mo_files->read_abap( iv_extra = 'em_' && lv_methname ).
+      ELSE.
+        " old way
+        lv_editorder = <ls_method>-meth_header-editorder.
+        lt_abap = mo_files->read_abap( iv_extra = 'em' && lv_editorder ).
+      ENDIF.
 
       TRY.
           io_class->add_change_new_method_source(
               clsname    = <ls_method>-methkey-clsname
               methname   = lv_methname
               methsource = lt_abap ).
-        CATCH cx_enh_mod_not_allowed cx_enh_is_not_enhanceable INTO lx_enh.
-          zcx_abapgit_exception=>raise( iv_text = 'Error deserializing ENHO method include'
-                                        ix_previous = lx_enh ).
+        CATCH cx_enh_root INTO lx_enh_root.
+          zcx_abapgit_exception=>raise_with_text( lx_enh_root ).
       ENDTRY.
 
     ENDLOOP.
@@ -102,7 +118,7 @@ CLASS zcl_abapgit_object_enho_class IMPLEMENTATION.
           permission_error = 3
           OTHERS           = 4.
       IF sy-subrc = 0.
-        mo_files->add_abap( iv_extra = |EM{ <ls_include>-includenr }|
+        mo_files->add_abap( iv_extra = |EM_{ <ls_include>-cpdname }|
                             it_abap  = lt_source ).
       ENDIF.
     ENDLOOP.
@@ -121,8 +137,8 @@ CLASS zcl_abapgit_object_enho_class IMPLEMENTATION.
           lv_shorttext TYPE string,
           lv_class     TYPE seoclsname,
           lv_enhname   TYPE enhname,
-          lv_package   TYPE devclass.
-
+          lv_package   TYPE devclass,
+          lx_enh_root  TYPE REF TO cx_enh_root.
 
     ii_xml->read( EXPORTING iv_name = 'SHORTTEXT'
                   CHANGING cg_data  = lv_shorttext ).
@@ -171,8 +187,8 @@ CLASS zcl_abapgit_object_enho_class IMPLEMENTATION.
 
         lo_enh_class->if_enh_object~save( run_dark = abap_true ).
         lo_enh_class->if_enh_object~unlock( ).
-      CATCH cx_enh_root.
-        zcx_abapgit_exception=>raise( 'error deserializing ENHO class' ).
+      CATCH cx_enh_root INTO lx_enh_root.
+        zcx_abapgit_exception=>raise_with_text( lx_enh_root ).
     ENDTRY.
 
   ENDMETHOD.

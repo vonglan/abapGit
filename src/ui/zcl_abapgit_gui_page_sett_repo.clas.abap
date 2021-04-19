@@ -174,6 +174,7 @@ CLASS zcl_abapgit_gui_page_sett_repo IMPLEMENTATION.
     DATA:
       lo_dot          TYPE REF TO zcl_abapgit_dot_abapgit,
       ls_dot          TYPE zif_abapgit_dot_abapgit=>ty_dot_abapgit,
+      lv_main_lang    TYPE spras,
       lv_language     TYPE t002t-sptxt,
       lv_ignore       TYPE string,
       ls_requirements LIKE LINE OF ls_dot-requirements,
@@ -186,20 +187,21 @@ CLASS zcl_abapgit_gui_page_sett_repo IMPLEMENTATION.
     " Get settings from DB
     lo_dot = mo_repo->get_dot_abapgit( ).
     ls_dot = lo_dot->get_data( ).
+    lv_main_lang = lo_dot->get_main_language( ).
 
     " Repository Settings
     SELECT SINGLE sptxt INTO lv_language FROM t002t
-      WHERE spras = sy-langu AND sprsl = ls_dot-master_language.
+      WHERE spras = sy-langu AND sprsl = lv_main_lang.
     IF sy-subrc <> 0.
       lv_language = 'Unknown language; Check your .abapgit.xml file'.
     ENDIF.
 
     mo_form_data->set(
       iv_key = c_id-main_language
-      iv_val = |{ ls_dot-master_language } ({ lv_language })| ).
+      iv_val = |{ lv_main_lang } ({ lv_language })| ).
     mo_form_data->set(
       iv_key = c_id-i18n_langs
-      iv_val = lo_dot->get_i18n_langs( ) ).
+      iv_val = zcl_abapgit_lxe_texts=>convert_table_to_lang_string( lo_dot->get_i18n_languages( ) ) ).
     mo_form_data->set(
       iv_key = c_id-folder_logic
       iv_val = ls_dot-folder_logic ).
@@ -269,7 +271,11 @@ CLASS zcl_abapgit_gui_page_sett_repo IMPLEMENTATION.
 
     lo_dot->set_folder_logic( mo_form_data->get( c_id-folder_logic ) ).
     lo_dot->set_starting_folder( mo_form_data->get( c_id-starting_folder ) ).
-    lo_dot->set_i18n_langs( mo_form_data->get( c_id-i18n_langs ) ).
+
+    lo_dot->set_i18n_languages(
+      zcl_abapgit_lxe_texts=>convert_lang_string_to_table(
+        iv_langs              = mo_form_data->get( c_id-i18n_langs )
+        iv_skip_main_language = lo_dot->get_main_language( ) ) ).
 
     " Remove all ignores
     lt_ignore = lo_dot->get_data( )-ignore.
