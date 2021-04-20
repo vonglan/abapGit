@@ -34,7 +34,7 @@ CLASS zcl_abapgit_object_pdws IMPLEMENTATION.
 
     IF is_experimental( ) = abap_false.
       "Work in progress
-      zcx_abapgit_exception=>raise( 'PDWS not fully implemented, enable experimental features to test it' ).
+      zcx_abapgit_exception=>raise( 'PDWS is still work in progress, enable experimental features to test it' ).
     ENDIF.
 
     ms_objkey-otype = swfco_org_workflow_template.
